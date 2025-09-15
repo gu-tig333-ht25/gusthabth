@@ -11,7 +11,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'TIG333 TODO',
+      title: "TIG333 TODO (fix)",
       theme: ThemeData(useMaterial3: true),
       home: const TodoOnePage(),
     );
@@ -107,4 +107,5 @@ class TodoOnePage extends StatelessWidget {
       ),
     );
   }
-}
+}// Detta är en teständring för att öppna ny PR
+
