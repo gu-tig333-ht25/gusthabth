@@ -14,3 +14,5 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+// Detta är en teständring för att öppna ny PR
+echo "Steg 2: PR för granskning" >> README.md
