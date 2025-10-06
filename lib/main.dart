@@ -10,6 +10,7 @@ void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -25,16 +26,18 @@ class Todo {
   final String id;
   final String title;
   bool done;
+
   Todo({required this.id, required this.title, required this.done});
-  factory Todo.fromJson(Map<String, dynamic> json) {
-    return Todo(id: json['id'], title: json['title'], done: json['done']);
-  }
+
+  factory Todo.fromJson(Map<String, dynamic> json) =>
+      Todo(id: json['id'], title: json['title'], done: json['done']);
 }
 
 enum Filter { all, done, undone }
 
 class TodoPage extends StatefulWidget {
   const TodoPage({super.key});
+
   @override
   State<TodoPage> createState() => _TodoPageState();
 }
@@ -45,7 +48,7 @@ class _TodoPageState extends State<TodoPage> {
   bool _loading = true;
   String? _error;
 
-  Uri _u(String path) => Uri.parse('$baseUrl$path?key=$apiKey');
+  Uri _buildUrl(String path) => Uri.parse('$baseUrl$path?key=$apiKey');
 
   @override
   void initState() {
@@ -59,13 +62,16 @@ class _TodoPageState extends State<TodoPage> {
       _error = null;
     });
     try {
-      final res = await http
-          .get(_u('/todos'))
+      final response = await http
+          .get(_buildUrl('/todos'))
           .timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) throw Exception(res.body);
-      final list = (jsonDecode(res.body) as List)
+
+      if (response.statusCode != 200) throw Exception(response.body);
+
+      final list = (jsonDecode(response.body) as List)
           .map((e) => Todo.fromJson(e))
           .toList();
+
       setState(() => _todos = list);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -74,51 +80,67 @@ class _TodoPageState extends State<TodoPage> {
     }
   }
 
-  Future<void> _toggle(Todo t) async {
-    final v = !t.done;
-    setState(() => t.done = v);
+  Future<void> _toggleDone(Todo todo) async {
+    final bool newDone = !todo.done;
+    setState(() => todo.done = newDone);
+
     try {
-      final res = await http.put(
-        _u('/todos/${t.id}'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'title': t.title, 'done': v}),
-      );
-      if (res.statusCode != 200) throw Exception(res.body);
+      final response = await http
+          .put(
+            _buildUrl('/todos/${todo.id}'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'title': todo.title, 'done': newDone}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) throw Exception(response.body);
+      await _load();
     } catch (_) {
-      setState(() => t.done = !v);
+      setState(() => todo.done = !newDone);
     }
   }
 
-  Future<void> _remove(Todo t) async {
-    final b = t;
-    setState(() => _todos.remove(t));
+  Future<void> _remove(Todo todo) async {
+    final Todo removedTodo = todo;
+    setState(() => _todos.remove(todo));
+
     try {
-      final res = await http.delete(_u('/todos/${b.id}'));
-      if (res.statusCode != 200) throw Exception(res.body);
+      final response = await http
+          .delete(_buildUrl('/todos/${removedTodo.id}'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) throw Exception(response.body);
+      await _load();
     } catch (_) {
-      setState(() => _todos.add(b));
+      setState(() => _todos.add(removedTodo));
     }
   }
 
   List<Todo> get _visible {
-    if (_filter == Filter.done) return _todos.where((t) => t.done).toList();
-    if (_filter == Filter.undone) return _todos.where((t) => !t.done).toList();
-    return _todos;
+    switch (_filter) {
+      case Filter.done:
+        return _todos.where((t) => t.done).toList();
+      case Filter.undone:
+        return _todos.where((t) => !t.done).toList();
+      case Filter.all:
+      default:
+        return _todos;
+    }
   }
 
-  Future<void> _goToAdd() async {
-    final ok = await Navigator.push<bool>(
+  Future<void> _goToAddPage() async {
+    final bool? didAdd = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const AddTodoPage()),
     );
-    if (ok == true) await _load();
+    if (didAdd == true) await _load();
   }
 
   void _setFilter(Filter f) => setState(() => _filter = f);
 
   @override
   Widget build(BuildContext context) {
-    final body = _loading
+    final Widget content = _loading
         ? const Center(child: CircularProgressIndicator())
         : (_error != null
               ? Center(
@@ -167,32 +189,41 @@ class _TodoPageState extends State<TodoPage> {
                     Expanded(
                       child: RefreshIndicator(
                         onRefresh: _load,
-                        child: ListView.separated(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: _visible.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, i) {
-                            final t = _visible[i];
-                            return ListTile(
-                              leading: Checkbox(
-                                value: t.done,
-                                onChanged: (_) => _toggle(t),
+                        child: _visible.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: const [
+                                  SizedBox(height: 48),
+                                  Center(child: Text('No todos yet')),
+                                ],
+                              )
+                            : ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: _visible.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, i) {
+                                  final todo = _visible[i];
+                                  return ListTile(
+                                    leading: Checkbox(
+                                      value: todo.done,
+                                      onChanged: (_) => _toggleDone(todo),
+                                    ),
+                                    title: Text(
+                                      todo.title,
+                                      style: TextStyle(
+                                        decoration: todo.done
+                                            ? TextDecoration.lineThrough
+                                            : TextDecoration.none,
+                                      ),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () => _remove(todo),
+                                    ),
+                                  );
+                                },
                               ),
-                              title: Text(
-                                t.title,
-                                style: TextStyle(
-                                  decoration: t.done
-                                      ? TextDecoration.lineThrough
-                                      : TextDecoration.none,
-                                ),
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => _remove(t),
-                              ),
-                            );
-                          },
-                        ),
                       ),
                     ),
                   ],
@@ -214,11 +245,11 @@ class _TodoPageState extends State<TodoPage> {
           ),
         ],
       ),
-      body: body,
+      body: content,
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('ADD'),
-        onPressed: _goToAdd,
+        onPressed: _goToAddPage,
       ),
     );
   }
@@ -226,34 +257,40 @@ class _TodoPageState extends State<TodoPage> {
 
 class AddTodoPage extends StatefulWidget {
   const AddTodoPage({super.key});
+
   @override
   State<AddTodoPage> createState() => _AddTodoPageState();
 }
 
 class _AddTodoPageState extends State<AddTodoPage> {
-  final TextEditingController _c = TextEditingController();
+  final TextEditingController _textController = TextEditingController();
   bool _saving = false;
   String? _error;
 
-  Uri _u(String path) => Uri.parse('$baseUrl$path?key=$apiKey');
+  Uri _buildUrl(String path) => Uri.parse('$baseUrl$path?key=$apiKey');
 
   Future<void> _save() async {
-    final text = _c.text.trim();
-    if (text.isEmpty) return;
+    final String title = _textController.text.trim();
+    if (title.isEmpty) return;
+
     setState(() {
       _saving = true;
       _error = null;
     });
+
     try {
-      final res = await http
+      final response = await http
           .post(
-            _u('/todos'),
+            _buildUrl('/todos'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'title': text, 'done': false}),
+            body: jsonEncode({'title': title, 'done': false}),
           )
           .timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200 && res.statusCode != 201)
-        throw Exception(res.body);
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(response.body);
+      }
+
       if (mounted) Navigator.pop(context, true);
     } on TimeoutException {
       setState(() {
@@ -269,8 +306,15 @@ class _AddTodoPageState extends State<AddTodoPage> {
   }
 
   @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final canSave = _c.text.trim().isNotEmpty && !_saving;
+    final bool canSave = _textController.text.trim().isNotEmpty && !_saving;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.grey[300],
@@ -282,7 +326,7 @@ class _AddTodoPageState extends State<AddTodoPage> {
         child: Column(
           children: [
             TextField(
-              controller: _c,
+              controller: _textController,
               enabled: !_saving,
               decoration: InputDecoration(
                 hintText: 'What are you going to do?',
